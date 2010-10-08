@@ -27,6 +27,7 @@ sub printComponent;
 sub printWizard;
 
 my $var_h = {};
+my $var_h1 = {};
 my $count = -1;
 
 sub addvalues {
@@ -37,7 +38,8 @@ sub addvalues {
 	my $exists = 0;
 	foreach my $key (sort keys %$var_h){
 	    if (exists $var_h->{$key}->{$name}) {
-		$var_h->{$key}->{$name} = $var_h->{$key}->{$name}." && ".$val;
+# 		$var_h->{$key}->{$name} = $var_h->{$key}->{$name}." && ".$val;
+		$val = $var_h->{$key}->{$name}." && ".$val;
 		$exists = 1;
 	    }
 	}
@@ -52,16 +54,19 @@ sub addvalues {
 	$attr = "installer";
 	foreach my $key (sort keys %$var_h){
 	    if (exists $var_h->{$key}->{$name} && $val ne '') {
-		$var_h->{$key}->{$name} = $var_h->{$key}->{$name}." && ".$val;
+# 		$var_h->{$key}->{$name} = $var_h->{$key}->{$name}." && ".$val;
 		$exists = 1;
+		$val = $var_h->{$key}->{$name}." && ".$val;
 	    }
 	}
 	if ($exists != 0) {
 	    return;
 	}
     }
-    die "val already exists\n" if exists $var_h->{$attr}->{$name};
+    die "val already exists $name: old = $var_h->{$attr}->{$name}, new = $val\n" if exists $var_h->{$attr}->{$name};
     $var_h->{$attr}->{$name} = $val;
+#     $attr = "wizard" if $attr ne "installer" && $attr ne "defaults";
+#     $var_h1->{$attr}->{$name} = $val;
 }
 
 sub condition {
@@ -210,8 +215,11 @@ sub printComponent {
 	}
 	my @name_node = $anode->findnodes('property[@name="name"]');
 	my @value_node = $anode->findnodes('property[@name="value"]');
-	addvalues ($name_node[0]->textContent, $value_node[0]->textContent, "___")  if ($name_node[0] && $value_node[0]);
-
+	if ($name_node[0] && $value_node[0]) {
+	    my $name = $name_node[0]->textContent; my $val = $value_node[0]->textContent;
+	    addvalues ($name, $val, "___")  ;
+print "added new values from install: $name = $val\n";
+	}
 	print MYFILE "\t"x($count+1),"<\/Action>\n";
     }
     print MYFILE "\t"x$count,"<\/Component\>\n";
@@ -250,6 +258,7 @@ sub printWizard {
     }
 
     my @name_node = $node->findnodes('property[@name="name"]');
+    @name_node = $node->findnodes('property[@name="productBeanId"]') if (@name_node==0);
     my @value_node = $node->findnodes('property[@name="value"]');
 
     die "many names for action.\n" if ( (scalar @name_node) > 1 || (scalar @value_node) > 1);
