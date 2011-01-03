@@ -29,16 +29,17 @@ sub printWizard;
 my $var_h = {};
 my $var_h1 = {};
 my $count = -1;
+my $copy_files_to = {};
 
 sub addvalues {
     my ($name, $val, $attr) = @_;
+# print Dumper($name, $val, $attr);
     return if $val eq '';
     if (! defined $attr) {
 	$attr = "defaults";
 	my $exists = 0;
 	foreach my $key (sort keys %$var_h){
 	    if (exists $var_h->{$key}->{$name}) {
-# 		$var_h->{$key}->{$name} = $var_h->{$key}->{$name}." && ".$val;
 		$val = $var_h->{$key}->{$name}." && ".$val;
 		$exists = 1;
 	    }
@@ -63,7 +64,7 @@ sub addvalues {
 	    return;
 	}
     }
-    die "val already exists $name: old = $var_h->{$attr}->{$name}, new = $val\n" if exists $var_h->{$attr}->{$name};
+    die "val already exists $name: old = $var_h->{$attr}->{$name}, new = $val\n" if exists $var_h->{$attr}->{$name} && $var_h->{$attr}->{$name} != $val;
     $var_h->{$attr}->{$name} = $val;
 #     $attr = "wizard" if $attr ne "installer" && $attr ne "defaults";
 #     $var_h1->{$attr}->{$name} = $val;
@@ -93,15 +94,16 @@ sub condition {
 }
 
 sub printComponent {
-    my $node = shift;
+    my ($node, $feat_id) = @_;
     $count++;
+    my @files_to_be_copied = ();
+    my @files_to_be_excluded = ();
 
     my @q_node = $node->findnodes('displayName');
     die "many names for action.\n" if ( (scalar @q_node) > 1);
     print MYFILE "\n", "\t"x$count,"<Component>", $q_node[0]->textContent,",id ",$node->getAttributeNode("id")->value,"\n";
-
+my $all_files = {};
     my @cond = condition ($node);
-#perl ./parse_uid.pl J2EEApplications.uip | cut -d\= -f 2 | sort | uniq
 
     foreach my $anode ($node->findnodes('action')) {
 	my @name_node = $anode->findnodes('displayName');
@@ -117,13 +119,19 @@ sub printComponent {
 	    push @excl,$file_node->textContent if $attr_name eq "excludePattern";
 	    if ($attr_name eq "fileName") {
 		print MYFILE "\t"x($count+2),"<Files>",$file_node->textContent,"<\/Files>\n" if $file_node->textContent ne "";
+# die "multiple files to copy.\n" if exists $files_to_be_copied->{$file_node->textContent};
+push @files_to_be_copied, $file_node->textContent;
 		foreach my $excl_item (@excl) {
 		    my @excl_split = split ';', $excl_item;
 		    foreach my $excl_split_item (@excl_split) {
 			my $excluding = $excl_split_item;
 			my $qas = $file_node->textContent;
-			$excluding =~ s/\^/$qas\//;
-			print MYFILE "\t"x($count+2),"<Files_excl>",$excluding,"<\/Files_excl>\n" if $file_node->textContent ne "";
+# 			$excluding =~ s/\^/$qas\//;
+			if ( $file_node->textContent ne "" ){
+			    print MYFILE "\t"x($count+2),"<Files_excl>",$excluding,"<\/Files_excl>\n";
+# die "multiple files to exclude.\n" if exists $files_to_be_copied->{$excluding};
+push @files_to_be_copied, $excluding;
+			}
 		    }
 		}
 		@excl = ();
@@ -153,11 +161,11 @@ sub printComponent {
 		    }
 		}
 	    }
-# die "naspa rau".Dumper(@q)."\n" if (@q>1);
 
 	    my $single_var = {};
 	    foreach my $key_ (keys %$var_h) {
 		foreach my $key (keys %{$var_h->{$key_}}) {
+		    ### remove duplicate variables
 		    if (exists $single_var->{$key}){
 			$single_var->{$key} = "NOOOOS";
 		    } else {
@@ -176,60 +184,79 @@ sub printComponent {
 		    $needed->{$a} = $single_var->{$a};
 		} else {
 		    foreach my $b (@all) {
-			if (exists $b->{$a} ){
+			if (exists $b->{$a}){
 			    $needed->{$a} = $b->{$a};
 			}
 		    }
 		    if ($needed->{$a} eq '' ){
 			foreach my $key_ (keys %$var_h) {
-			    foreach my $key (keys %{$var_h->{$key_}}) {
-				if ($key eq $a){
-				    $needed->{$a} .= " && ".$var_h->{$key_}->{$key};
+# 			    foreach my $key (keys %{$var_h->{$key_}}) {
+# && exists $b->{$a}->{$feat_id} && exists $b->{$a}->{$feat_id} eq "true"
+# die "blea" if ! (exists $b->{$a}->{$feat_id} && exists $b->{$a}->{$feat_id} eq "true");
+# print "$a = $key_ = $key\n";
+# 				if ($key eq $a && exists $var_h->{$key_}->{$feat_id}){
+# 				    $needed->{$a} .= " && ".$var_h->{$key_}->{$key};
+# 				}
+				if (exists $var_h->{$key_}->{$feat_id} && exists $var_h->{$key_}->{$a}){
+
+die "cocot 3a: $needed->{$a} = $var_h->{$key_}->{$a}\n" if $var_h->{$key_}->{$feat_id} ne "true";
+die "cocot 3b: $needed->{$a} = $var_h->{$key_}->{$a}\n" if exists $needed->{$a} && $needed->{$a} ne '' && $needed->{$a} ne $var_h->{$key_}->{$a};
+				    $needed->{$a} = $var_h->{$key_}->{$a};
+# print "$feat_id = $a = $var_h->{$key_}->{$feat_id} = $var_h->{$key_}->{$a}\n";
 				}
-			    }
+# 			    }
 			}
 		    }
 		}
 	    }
 
 	    if ($txt ne "" ){
-	    print MYFILE "\t"x($count+2),"<installLocation>$q_txt<\/installLocation>\n";
-	    foreach  my $a (keys %$needed) {
-		my @qqq = split ' && ',$needed->{$a};
-		my %hash   = map { $_, 1 } @qqq;
-		@qqq = keys %hash;
-		@qqq = grep /\S/, @qqq;
-		$needed->{$a} = join '||',@qqq;
-		$q_txt =~ s/\$V\($a\)/$needed->{$a}/;
-	    }
-	    if ($q_txt =~ m/\$P\(absoluteInstallLocation\),/) {
-		$q_txt =~ s/\$P\(absoluteInstallLocation\),/$filename\//;
-	    } else {
-		$q_txt = "$filename\/$q_txt";
-	    }
+		print MYFILE "\t"x($count+2),"<installLocation>$q_txt<\/installLocation>\n";
+		foreach  my $a (keys %$needed) {
+		    my @qqq = split ' && ',$needed->{$a};
+		    my %hash   = map { $_, 1 } @qqq;
+		    @qqq = keys %hash;
+		    @qqq = grep /\S/, @qqq;
+ die "cocot 2\n"if (scalar @qqq > 1);
+		    $needed->{$a} = join '||',@qqq;
+		    $q_txt =~ s/\$V\($a\)/$needed->{$a}/;
+		}
+		if ($q_txt =~ m/\$P\(absoluteInstallLocation\),/) {
+		    $q_txt =~ s/\$P\(absoluteInstallLocation\),/$filename\//;
+		} else {
+		    $q_txt = "$filename\/$q_txt";
+		}
 
-	    $q_txt =~ s/\$PATH\((.*)\)/$1/;
+		$q_txt =~ s/\$PATH\((.*)\)/$1/;
+		$q_txt =~ s/\/+/\//g;
+		print MYFILE "\t"x($count+2),"<installLocation>$q_txt<\/installLocation>\n";
+# die "multiple install paths $q_txt.\n".Dumper(keys %$all_files) if $all_files->{$q_txt} ne "";
+push @{ $all_files->{$q_txt}->{'f'} }, @files_to_be_copied if scalar @files_to_be_copied;
+push @{ $all_files->{$q_txt}->{'e'} }, @files_to_be_excluded if scalar @files_to_be_excluded;
 
-	    print MYFILE "\t"x($count+2),"<installLocation>$q_txt<\/installLocation>\n";
 	    }
 	}
+
 	my @name_node = $anode->findnodes('property[@name="name"]');
 	my @value_node = $anode->findnodes('property[@name="value"]');
 	if ($name_node[0] && $value_node[0]) {
 	    my $name = $name_node[0]->textContent; my $val = $value_node[0]->textContent;
 	    addvalues ($name, $val, "___")  ;
-print "added new values from install: $name = $val\n";
+# print "added new values from install: $name = $val\n";
 	}
 	print MYFILE "\t"x($count+1),"<\/Action>\n";
+# $name_node[0]->textContent
     }
     print MYFILE "\t"x$count,"<\/Component\>\n";
+# print Dumper($copy_files_to);
     $count--;
+    return \@cond, $all_files;
 }
 
 
 sub printFeature {
     my $node = shift;
-
+    my ($cond, $files, $excluded, $install) = ();
 
     my @q_node = $node->findnodes('displayName');
     die "many names for action.\n" if ( (scalar @q_node) > 1);
@@ -237,10 +264,12 @@ sub printFeature {
     print MYFILE "\n\n", "\t"x$count,"<Feature>",$q_node[0]->textContent,",id ",$node->getAttributeNode("id")->value,"\n";
 
     foreach my $anode ($node->getChildrenByTagName('component')) {
-    printComponent $anode;
+	($cond, $files) = printComponent ($anode, $node->getAttributeNode("id")->value);
+	my $contition = join ' && ', @$cond;
+	$copy_files_to->{$contition}->{$q_node[0]->textContent} = $files if scalar keys %$files;
     }
     foreach my $anode ($node->getChildrenByTagName('feature')) {
-    printFeature $anode;
+	printFeature $anode;
     }
 
     print MYFILE "\t"x$count,"<\/Feature\>\n";
@@ -250,26 +279,23 @@ sub printFeature {
 sub printWizard {
     my $node = shift;
     my $attribute = shift;
-    my $prev_attribute=$attribute;
+    my $prev_attribute = $attribute;
 
     $attribute .= $node->getAttributeNode('id')->getValue."," if $node->getName ne "wizardRoot";
     foreach my $anode ($node->getChildrenByTagName('wizardBean')) {
-    $prev_attribute = printWizard $anode,$attribute;
+	$prev_attribute = printWizard $anode,$attribute;
     }
 
     my @name_node = $node->findnodes('property[@name="name"]');
-    @name_node = $node->findnodes('property[@name="productBeanId"]') if (@name_node==0);
+    @name_node = $node->findnodes('property[@name="productBeanId"]') if (@name_node == 0);
     my @value_node = $node->findnodes('property[@name="value"]');
 
     die "many names for action.\n" if ( (scalar @name_node) > 1 || (scalar @value_node) > 1);
-
     addvalues ($name_node[0]->textContent, $value_node[0]->textContent, $prev_attribute) if ($name_node[0] && $value_node[0]);
     return $prev_attribute;
-
 }
 
 die "nasol\n" if (scalar @all_wizards > 1);
-printWizard $all_wizards[0],"";
 
 ### default values
 foreach my $var (@all_vars) {
@@ -279,9 +305,11 @@ foreach my $var (@all_vars) {
     addvalues($var, $val);
     }
 }
+printWizard $all_wizards[0],"";
+# print Dumper($var_h);
 
 die "nasol\n" if (scalar @all_nodes > 1);
 printFeature $all_nodes[0];
 
-# print Dumper($var_h);
 close (MYFILE);
+print Dumper($copy_files_to);
